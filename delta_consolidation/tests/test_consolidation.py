@@ -1,4 +1,5 @@
 from odoo import Command
+from odoo.exceptions import UserError
 from odoo.tests.common import TransactionCase
 
 
@@ -99,6 +100,8 @@ class TestConsolidation(TransactionCase):
         group = run.line_ids.filtered(lambda line: not line.company_id)
         self.assertTrue(all(company.currency_id.is_zero(line.amount) for line in group))
         self.assertEqual(run.move_id.state, "posted")
+        with self.assertRaises(UserError):
+            run.unlink()
         self.assertEqual(sum(run.move_id.line_ids.mapped("balance")), 0)
         self.assertEqual(
             sum(
@@ -108,3 +111,16 @@ class TestConsolidation(TransactionCase):
             ),
             -100,
         )
+
+        invalid = self.env["delta.consolidation"].create(
+            {
+                "name": "Invalid clearing",
+                "date_end": "2026-03-31",
+                "company_ids": [Command.set((company | other).ids)],
+                "elimination_company_id": elim.id,
+                "journal_id": je.id,
+                "clearing_account_id": account(elim, "E999", "income").id,
+            }
+        )
+        with self.assertRaises(UserError):
+            invalid.action_generate()

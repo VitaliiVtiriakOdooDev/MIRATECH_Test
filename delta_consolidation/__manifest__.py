@@ -8,5 +8,4 @@
         "security/ir.model.access.csv",
         "views/consolidation_views.xml",
     ],
-    "installable": True,
 }

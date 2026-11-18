@@ -6,15 +6,6 @@ from odoo import Command, _, api, fields, models
 from odoo.exceptions import UserError
 
 
-class AccountAccount(models.Model):
-    _inherit = "account.account"
-
-    delta_intercompany = fields.Boolean(
-        string="Eliminate intercompany balances",
-        help="Mark loan and other non-trade intercompany accounts. Trade receivable and payable accounts are included automatically.",
-    )
-
-
 class Consolidation(models.Model):
     _name = "delta.consolidation"
     _description = "Group consolidation snapshot"
@@ -59,6 +50,8 @@ class Consolidation(models.Model):
             )
         if not set(self.company_ids.ids + [elim.id]).issubset(set(self.env.companies.ids)):
             raise UserError(_("Enable access to all selected companies before generating."))
+        if self.clearing_account_id.account_type not in ("asset_current", "liability_current"):
+            raise UserError(_("The clearing account must be a current asset or liability account."))
         currency = elim.currency_id
         month_start = date(end.year, end.month, 1)
         lines = self.env["account.move.line"].search(
@@ -73,7 +66,7 @@ class Consolidation(models.Model):
         totals = defaultdict(float)
         local_totals = defaultdict(float)
         eliminations = defaultdict(float)
-        source_moves = self.env["account.move"]
+        source_move_ids = set()
         for line in lines:
             kind = line.account_id.account_type
             pnl = kind.startswith(("income", "expense"))
@@ -90,7 +83,7 @@ class Consolidation(models.Model):
             )
             if is_intercompany and (pnl or is_trade or line.account_id.delta_intercompany):
                 eliminations[kind] -= amount
-                source_moves |= line.move_id
+                source_move_ids.add(line.move_id.id)
         # A separate account per type keeps the journal entry readable and the report classified.
         accounts = (
             self.env["account.account"]
@@ -109,18 +102,19 @@ class Consolidation(models.Model):
         ]
         if missing:
             raise UserError(
-                _("Create elimination-company accounts for these account types: %s")
-                % ", ".join(sorted(missing))
+                _(
+                    "Create elimination-company accounts for these account types: %s",
+                    ", ".join(sorted(missing)),
+                )
             )
         eliminations = {kind: currency.round(value) for kind, value in eliminations.items()}
         commands = []
         for kind, value in sorted(eliminations.items()):
-            value = currency.round(value)
             if not currency.is_zero(value):
                 commands.append(
                     Command.create(
                         {
-                            "name": _("Eliminate %s") % kind,
+                            "name": _("Eliminate %s", kind),
                             "account_id": by_type[kind].id,
                             "debit": max(value, 0),
                             "credit": max(-value, 0),
@@ -206,7 +200,7 @@ class Consolidation(models.Model):
             {
                 "move_id": move.id if move else False,
                 "line_ids": report,
-                "source_move_ids": [Command.set(source_moves.ids)],
+                "source_move_ids": [Command.set(sorted(source_move_ids))],
             }
         )
         self.write({"state": "done"})
@@ -217,38 +211,11 @@ class Consolidation(models.Model):
             raise UserError(_("Generated snapshots cannot be modified."))
         return super().write(vals)
 
-    def unlink(self):
+    @api.ondelete(at_uninstall=False)
+    def _unlink_except_generated(self):
         if any(record.state == "done" for record in self):
             raise UserError(
                 _(
                     "Generated snapshots cannot be deleted. Reverse their journal entry through Accounting if needed."
                 )
             )
-        return super().unlink()
-
-
-class ConsolidationLine(models.Model):
-    _name = "delta.consolidation.line"
-    _description = "Consolidation result"
-    _order = "company_id, account_type"
-
-    @api.model_create_multi
-    def create(self, vals_list):
-        runs = self.env["delta.consolidation"].browse(
-            [vals.get("consolidation_id") for vals in vals_list if vals.get("consolidation_id")]
-        )
-        if any(run.state != "draft" for run in runs):
-            raise UserError(_("Generated snapshots cannot be modified."))
-        return super().create(vals_list)
-
-    consolidation_id = fields.Many2one("delta.consolidation", required=True, ondelete="cascade")
-    company_id = fields.Many2one(
-        "res.company", string="Company", help="Empty means consolidated group."
-    )
-    currency_id = fields.Many2one(related="consolidation_id.elimination_company_id.currency_id")
-    local_currency_id = fields.Many2one(
-        related="company_id.currency_id", string="Local currency code"
-    )
-    local_amount = fields.Monetary(currency_field="local_currency_id", string="Local currency")
-    account_type = fields.Char(required=True, string="Account type")
-    amount = fields.Monetary(string="Debit less credit (group currency)")
