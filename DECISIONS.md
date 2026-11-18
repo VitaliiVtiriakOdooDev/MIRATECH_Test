@@ -1,0 +1,5 @@
+# Decision note
+
+Generate on demand at month end, based on posted source lines through the chosen date. Store a separate snapshot and a posted, balanced elimination journal entry in a dedicated USD company. Reverse internal revenue, expense, receivables, payables and explicitly marked loan accounts. The balancing line shows timing/translation differences. Each snapshot is a complete point-in-time adjustment, not an incremental ledger. This keeps standalone books intact and gives the auditor a journal entry to open. The report reads the snapshot, not a sum of all elimination entries.
+
+Rejected: posting eliminations into operating companies, because it would change the standard Profit and Loss and standalone books. Rejected: report-only arithmetic, because there would be no posted entry for an auditor. Rejected: auto-matching only paired invoices, because the seller's March invoice and the payment in transit would be omitted until the other company books them. The chosen method needs controller review of clearing and careful counterparty/account tagging; it is not a substitute for reconciliation or full foreign-currency consolidation.

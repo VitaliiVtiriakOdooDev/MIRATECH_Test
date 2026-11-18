@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_delta_consolidation,delta.consolidation,model_delta_consolidation,delta_consolidation.group_delta_controller,1,1,1,1
+access_delta_consolidation_line,delta.consolidation.line,model_delta_consolidation_line,delta_consolidation.group_delta_controller,1,0,1,0
